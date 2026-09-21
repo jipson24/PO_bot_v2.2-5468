@@ -18,6 +18,7 @@ const patch = z.object({
   fallbackPairs: z.boolean().optional(),
   excludedSymbols: z.string().max(2000).optional(),
   blockedHours: z.string().max(200).optional(),
+  assetClasses: z.string().max(200).optional(),
 });
 
 export const config = {

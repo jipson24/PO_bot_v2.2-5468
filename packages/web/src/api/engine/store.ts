@@ -56,6 +56,41 @@ export function parseBlockedHours(raw: string | null | undefined): Set<number> {
   return out;
 }
 
+/** Классы активов, которые вообще существуют у Pocket Option. */
+export const ASSET_CLASSES = [
+  "currency",
+  "cryptocurrency",
+  "commodity",
+  "stock",
+  "index",
+] as const;
+
+export type AssetClass = (typeof ASSET_CLASSES)[number];
+
+/** Человеческие названия классов для дашборда и Telegram. */
+export const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
+  currency: "Валюты",
+  cryptocurrency: "Криптовалюты",
+  commodity: "Сырьё",
+  stock: "Акции",
+  index: "Индексы",
+};
+
+/**
+ * Разбор списка классов активов из настроек. Неизвестные значения молча
+ * отбрасываются, пустой результат означает «валюты» — иначе опечатка в
+ * настройках полностью остановила бы сканер.
+ */
+export function parseAssetClasses(raw: string | null | undefined): Set<AssetClass> {
+  const out = new Set<AssetClass>();
+  for (const part of String(raw ?? "").split(/[,\s;]+/)) {
+    const v = part.trim().toLowerCase();
+    if ((ASSET_CLASSES as readonly string[]).includes(v)) out.add(v as AssetClass);
+  }
+  if (out.size === 0) out.add("currency");
+  return out;
+}
+
 export async function addSubscriber(chatId: string, title?: string) {
   const existing = await db
     .select()

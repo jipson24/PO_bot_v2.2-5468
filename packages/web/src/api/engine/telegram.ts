@@ -6,13 +6,20 @@ import { feedState } from "../market/po-feed";
 import {
   activeSubscribers,
   addSubscriber,
+  ASSET_CLASS_LABELS,
   deactivateSubscriber,
   getSettings,
+  parseAssetClasses,
   updateSettings,
 } from "./store";
 
 const API = (method: string) =>
   `https://api.telegram.org/bot${envStr("TELEGRAM_BOT_TOKEN")}/${method}`;
+
+/** Подпись класса активов; неизвестный класс показываем как есть. */
+function assetClassLabel(kind: string): string {
+  return ASSET_CLASS_LABELS[kind as keyof typeof ASSET_CLASS_LABELS] ?? kind;
+}
 
 export function botConfigured(): boolean {
   return Boolean(envStr("TELEGRAM_BOT_TOKEN"));
@@ -303,8 +310,9 @@ async function handleCommand(
         .where(gte(schema.assets.payout, settings.minPayout))
         .orderBy(desc(schema.assets.payout))
         .limit(40);
+      const classes = parseAssetClasses(settings.assetClasses);
       const filtered = rows.filter(
-        (a) => a.payout <= settings.maxPayout && a.kind === "currency",
+        (a) => a.payout <= settings.maxPayout && classes.has(a.kind as never),
       );
       if (!filtered.length) {
         await sendMessage(chatId, "Список активов ещё не загружен, попробуй через минуту.");
@@ -316,7 +324,7 @@ async function handleCommand(
         `<b>Пары с payout ${settings.minPayout}–${settings.maxPayout}%</b>`,
         "",
         `<b>В работе (${ready.length})</b>`,
-        ...ready.slice(0, 20).map((a) => `• ${a.name} — ${a.payout}%`),
+        ...ready.slice(0, 20).map((a) => `• ${a.name} — ${a.payout}% · ${assetClassLabel(a.kind)}`),
       ];
       if (waiting.length) {
         lines.push(

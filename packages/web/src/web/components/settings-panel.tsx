@@ -13,7 +13,17 @@ interface Draft {
   cooldownMinutes: number;
   excludedSymbols: string;
   blockedHours: string;
+  assetClasses: string;
 }
+
+/** Классы активов Pocket Option в порядке показа. */
+const ASSET_CLASS_OPTIONS: { value: string; label: string; hint: string }[] = [
+  { value: "currency", label: "Валюты", hint: "80 активов" },
+  { value: "cryptocurrency", label: "Криптовалюты", hint: "23 активa" },
+  { value: "commodity", label: "Сырьё", hint: "золото, серебро, нефть" },
+  { value: "stock", label: "Акции", hint: "40 активов" },
+  { value: "index", label: "Индексы", hint: "payout ~45%" },
+];
 
 export function SettingsPanel() {
   const config = useConfig();
@@ -31,6 +41,7 @@ export function SettingsPanel() {
       cooldownMinutes: settings.cooldownMinutes,
       excludedSymbols: settings.excludedSymbols ?? "",
       blockedHours: settings.blockedHours ?? "",
+      assetClasses: settings.assetClasses ?? "currency",
     });
   }, [settings, draft]);
 
@@ -53,7 +64,8 @@ export function SettingsPanel() {
     draft.maxPayout !== settings.maxPayout ||
     draft.cooldownMinutes !== settings.cooldownMinutes ||
     draft.excludedSymbols !== (settings.excludedSymbols ?? "") ||
-    draft.blockedHours !== (settings.blockedHours ?? "");
+    draft.blockedHours !== (settings.blockedHours ?? "") ||
+    draft.assetClasses !== (settings.assetClasses ?? "currency");
 
   const excludedCount = draft.excludedSymbols
     .split(/[,\s;]+/)
@@ -62,6 +74,23 @@ export function SettingsPanel() {
   const blockedCount = draft.blockedHours
     .split(/[,\s;]+/)
     .filter(Boolean).length;
+
+  const activeClasses = new Set(
+    draft.assetClasses.split(/[,\s;]+/).map((v) => v.trim().toLowerCase()).filter(Boolean),
+  );
+  const toggleClass = (value: string) => {
+    const next = new Set(activeClasses);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    // Пустой список означал бы «сканировать нечего» — оставляем валюты.
+    if (next.size === 0) next.add("currency");
+    setDraft({
+      ...draft,
+      assetClasses: ASSET_CLASS_OPTIONS.filter((o) => next.has(o.value))
+        .map((o) => o.value)
+        .join(","),
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -145,6 +174,41 @@ export function SettingsPanel() {
             <p className="text-[11px] text-muted-foreground">
               Символы через запятую. Такие пары полностью выпадают из watchlist — ни в диапазоне
               payout, ни в резерве. Регистр не важен.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between">
+              <span className="text-[12px] font-medium">Классы активов</span>
+              <span className="num text-[11px] text-muted-foreground">
+                {activeClasses.size} из {ASSET_CLASS_OPTIONS.length}
+              </span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {ASSET_CLASS_OPTIONS.map((opt) => {
+                const on = activeClasses.has(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => toggleClass(opt.value)}
+                    className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition ${
+                      on
+                        ? "border-gold/60 bg-gold/10"
+                        : "border-border bg-elevated/50 hover:border-border/80"
+                    }`}
+                  >
+                    <span className="text-[12px] font-medium">{opt.label}</span>
+                    <span className="num text-[10px] text-muted-foreground">{opt.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Что сканер берёт из списка брокера. Свечи по крипте, сырью и акциям идут с того же
+              фида Pocket Option, что и по валютам. Индексы выключены по умолчанию: payout у них
+              около 45% — ниже, чем нужно диапазону.
             </p>
           </div>
 

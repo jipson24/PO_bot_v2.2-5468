@@ -26,12 +26,78 @@ const CACHE_TTL_MS = 55_000;
 /** Минимальная пауза между запросами, когда новой свечи в кеше ещё нет. */
 const MIN_REFETCH_MS = 20_000;
 
-/** Символ Pocket Option → символ публичного фида. OTC-пары не покрываются. */
-export function toFeedSymbol(poSymbol: string): string | null {
+/**
+ * Символ Pocket Option → символ публичного фида (Yahoo). OTC не покрывается
+ * вообще: такие котировки существуют только у брокера.
+ *
+ * Крипта, сырьё и акции у PO живут почти целиком в OTC, поэтому публичный
+ * маппинг для них — узкий резерв на не-OTC символы. Составляем его явными
+ * таблицами: угадывание по форме символа давало бы битые тикеры вида
+ * `BTCUSD=X` или `UKBrent=X`, по которым фид молча вернул бы пустоту.
+ */
+const CRYPTO_FEED: Record<string, string> = {
+  BTCUSD: "BTC-USD",
+  ETHUSD: "ETH-USD",
+  LTCUSD: "LTC-USD",
+  LNKUSD: "LINK-USD",
+  DASH_USD: "DASH-USD",
+  BTCGBP: "BTC-GBP",
+  BTCJPY: "BTC-JPY",
+  BCHEUR: "BCH-EUR",
+  BCHGBP: "BCH-GBP",
+  BCHJPY: "BCH-JPY",
+};
+
+const COMMODITY_FEED: Record<string, string> = {
+  XAUUSD: "GC=F",
+  XAGUSD: "SI=F",
+  XPTUSD: "PL=F",
+  XPDUSD: "PA=F",
+  UKBrent: "BZ=F",
+  USCrude: "CL=F",
+};
+
+const INDEX_FEED: Record<string, string> = {
+  SP500: "^GSPC",
+  NASUSD: "^NDX",
+  DJI30: "^DJI",
+  JPN225: "^N225",
+  D30EUR: "^GDAXI",
+  F40EUR: "^FCHI",
+  E50EUR: "^STOXX50E",
+  "100GBP": "^FTSE",
+  H33HKD: "^HSI",
+  AUS200: "^AXJO",
+};
+
+/** Тикеры PO, которые не совпадают с биржевыми. */
+const STOCK_FEED: Record<string, string> = {
+  VISA: "V",
+  CITI: "C",
+  FB: "META",
+};
+
+export function toFeedSymbol(poSymbol: string, kind?: string): string | null {
   if (poSymbol.endsWith("_otc")) return null;
   const base = poSymbol.replace(/_otc$/, "");
-  if (/^[A-Z]{6}$/.test(base)) return `${base}=X`;
-  return null;
+
+  switch (kind) {
+    case "cryptocurrency":
+      return CRYPTO_FEED[base] ?? null;
+    case "commodity":
+      return COMMODITY_FEED[base] ?? null;
+    case "index":
+      return INDEX_FEED[base] ?? null;
+    case "stock": {
+      // У PO тикеры акций идут с решёткой: `#MSFT`, `#AAPL`.
+      const ticker = base.replace(/^#/, "").toUpperCase();
+      if (STOCK_FEED[ticker]) return STOCK_FEED[ticker];
+      return /^[A-Z]{1,5}$/.test(ticker) ? ticker : null;
+    }
+    default:
+      // Валюты (и вызовы без kind — старое поведение): шестибуквенная пара.
+      return /^[A-Z]{6}$/.test(base) ? `${base}=X` : null;
+  }
 }
 
 export function isOtc(poSymbol: string): boolean {

@@ -137,6 +137,16 @@ export const settings = sqliteTable("settings", {
    * утренний переход между сессиями с рваной ликвидностью.
    */
   blockedHours: text("blocked_hours").notNull().default("5,6,7"),
+  /**
+   * Классы активов Pocket Option, которые берёт сканер, через запятую.
+   * Возможные значения — категории брокера: currency, cryptocurrency,
+   * commodity, stock, index. Свечи по всем классам отдаёт родной фид PO
+   * (проверено 21.09.2026 на XAUUSD_otc, DOGE_otc, #MSFT_otc, UKBrent_otc),
+   * поэтому ограничение здесь — вопрос выбора, а не доступности данных.
+   */
+  assetClasses: text("asset_classes")
+    .notNull()
+    .default("currency,cryptocurrency,commodity,stock"),
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

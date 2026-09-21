@@ -7,7 +7,13 @@ import { getAssets } from "../market/pocket-option";
 import { kyivHour } from "../lib/day";
 import { analyze } from "../strategy/analyze";
 import { buildSnapshot } from "../strategy/snapshot";
-import { getSettings, isExcluded, parseBlockedHours, parseExcluded } from "./store";
+import {
+  getSettings,
+  isExcluded,
+  parseAssetClasses,
+  parseBlockedHours,
+  parseExcluded,
+} from "./store";
 import { publishSignal } from "./telegram";
 
 export interface ScanOutcome {
@@ -33,9 +39,11 @@ export async function syncAssets(): Promise<{ total: number; tradable: number }>
   const now = new Date();
 
   const poFeed = ssidLooksLikeCookie();
-  const currency = snapshot.assets.filter((a) => a.kind === "currency");
-  for (const asset of currency) {
-    const feedSymbol = toFeedSymbol(asset.symbol);
+  // Классы активов из настроек: валюты, крипта, сырьё, акции, индексы.
+  const classes = parseAssetClasses(settings.assetClasses);
+  const selected = snapshot.assets.filter((a) => classes.has(a.kind as never));
+  for (const asset of selected) {
+    const feedSymbol = toFeedSymbol(asset.symbol, asset.kind);
     // OTC-котировки существуют только у PO: без cookie ssid пара остаётся в ожидании.
     const feedStatus = feedSymbol ? "ok" : poFeed ? "ok" : "needs_po_feed";
     await db
@@ -64,10 +72,10 @@ export async function syncAssets(): Promise<{ total: number; tradable: number }>
       });
   }
 
-  const tradable = currency.filter(
+  const tradable = selected.filter(
     (a) => a.payout >= settings.minPayout && a.payout <= settings.maxPayout,
   );
-  return { total: currency.length, tradable: tradable.length };
+  return { total: selected.length, tradable: tradable.length };
 }
 
 /**
@@ -94,7 +102,12 @@ async function watchlist(): Promise<{ list: (typeof schema.assets.$inferSelect)[
   // Ручной чёрный список пар (настройки) — убираем до всех прочих фильтров,
   // чтобы исключённые символы не попали ни в диапазон, ни в резервный пул.
   const excluded = parseExcluded(settings.excludedSymbols);
-  const rows = excluded.size ? all.filter((a) => !isExcluded(a.symbol, excluded)) : all;
+  const notExcluded = excluded.size ? all.filter((a) => !isExcluded(a.symbol, excluded)) : all;
+
+  // Класс активов выключили — его строки остаются в БД с прошлых синхронизаций,
+  // поэтому фильтруем ещё и здесь, а не только на приёме снепшота.
+  const classes = parseAssetClasses(settings.assetClasses);
+  const rows = notExcluded.filter((a) => classes.has(a.kind as never));
 
   const inRange = rows.filter(
     (a) =>
@@ -111,7 +124,9 @@ async function watchlist(): Promise<{ list: (typeof schema.assets.$inferSelect)[
 
   // Обычные пары PO часто помечает неактивными вне сессии, но публичный фид
   // по ним живой — свежесть всё равно проверит isStale в основном цикле.
-  const spare = rows.filter((a) => !a.isOtc && a.feedStatus === "ok");
+  // Резерв держим валютным: публичный фид надёжно покрывает только FX, а по
+  // не-OTC крипте/сырью/акциям payout у брокера 15–45% и до диапазона не доходит.
+  const spare = rows.filter((a) => !a.isOtc && a.kind === "currency" && a.feedStatus === "ok");
   if (spare.length === 0) return { list: inRange, fallback: false };
 
   const bySymbol = new Map<string, typeof schema.assets.$inferSelect>();
