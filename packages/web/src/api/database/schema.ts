@@ -108,7 +108,13 @@ export const settings = sqliteTable("settings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   minConfidence: integer("min_confidence").notNull().default(80),
   scanIntervalSec: integer("scan_interval_sec").notNull().default(60),
-  minPayout: integer("min_payout").notNull().default(82),
+  /**
+   * Нижняя граница payout. 80, а не 82, чтобы в работу попало сырьё: у золота,
+   * серебра, Brent и WTI payout ровно 80%. По замеру 21.09.2026 зона ниже 85%
+   * дала 76.2% винрейта против 48.1% в зоне 90%+ — правда, всего на 21 сделке,
+   * так что выборку по сырью надо пересмотреть на волне 2.
+   */
+  minPayout: integer("min_payout").notNull().default(80),
   /**
    * Верхняя граница payout. Высокий payout — метка плохо предсказуемой пары:
    * по замеру 21.09.2026 зона 90%+ дала 48% винрейта на 150 сделках при пороге
