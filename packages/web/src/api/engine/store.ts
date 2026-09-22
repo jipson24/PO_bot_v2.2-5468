@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq, ne } from "drizzle-orm";
 import { db } from "../database";
 import * as schema from "../database/schema";
 
@@ -117,6 +117,23 @@ export async function deactivateSubscriber(chatId: string) {
     .update(schema.subscribers)
     .set({ isActive: false })
     .where(eq(schema.subscribers.chatId, chatId));
+}
+
+/**
+ * Сводка по доставке сигналов в чаты. Живёт здесь, а не в ./delivery, чтобы
+ * telegram.ts мог её читать без кольца импортов (delivery зависит от telegram).
+ */
+export async function deliveryHealth() {
+  const rows = await db
+    .select()
+    .from(schema.deliveries)
+    .where(ne(schema.deliveries.status, "sent"))
+    .orderBy(asc(schema.deliveries.signalId));
+  return {
+    pending: rows.filter((r) => r.status === "pending").length,
+    failed: rows.filter((r) => r.status === "failed").length,
+    lastError: rows.at(-1)?.lastError ?? null,
+  };
 }
 
 export async function activeSubscribers() {

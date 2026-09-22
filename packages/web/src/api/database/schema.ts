@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 /** Активы Pocket Option с payout — обновляются из WS-фида брокера. */
 export const assets = sqliteTable(
@@ -65,6 +65,37 @@ export const signals = sqliteTable(
     index("signals_symbol_idx").on(t.symbol),
     index("signals_trade_day_idx").on(t.tradeDay),
     index("signals_outcome_idx").on(t.outcome),
+  ],
+);
+
+/**
+ * Доставка сигнала в каждый чат по отдельности.
+ *
+ * Раньше факт отправки жил одним флагом `signals.sent_to_telegram`, который
+ * ставился, если сообщение ушло хотя бы в один чат. Из-за этого сбой доставки
+ * в один из чатов был невидим (в базе «отправлено», у человека — тишина), а
+ * таймаут Telegram API вообще ничего не оставлял в логах. Теперь на каждый
+ * чат — своя строка со статусом, числом попыток и текстом ошибки, и
+ * дожимальщик (`retryPendingDeliveries`) добивает `pending` до конца.
+ */
+export const deliveries = sqliteTable(
+  "deliveries",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    signalId: integer("signal_id").notNull(),
+    chatId: text("chat_id").notNull(),
+    /** pending | sent | failed */
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    sentAt: integer("sent_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("deliveries_signal_chat_idx").on(t.signalId, t.chatId),
+    index("deliveries_status_idx").on(t.status),
   ],
 );
 

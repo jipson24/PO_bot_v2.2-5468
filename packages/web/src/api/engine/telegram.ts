@@ -3,11 +3,13 @@ import { db } from "../database";
 import * as schema from "../database/schema";
 import { envStr } from "../env";
 import { feedState } from "../market/po-feed";
+
 import {
   activeSubscribers,
   addSubscriber,
   ASSET_CLASS_LABELS,
   deactivateSubscriber,
+  deliveryHealth,
   getSettings,
   parseAssetClasses,
   updateSettings,
@@ -28,8 +30,36 @@ export function botConfigured(): boolean {
 /** Чтобы не спамить в логи одним и тем же Conflict от второй копии бота. */
 let conflictLogged = false;
 
-async function call<T>(method: string, body: Record<string, unknown>): Promise<T | null> {
-  if (!botConfigured()) return null;
+/** Ответ Telegram API: либо результат, либо разобранная ошибка. */
+type ApiResult<T> =
+  | { ok: true; result: T | null }
+  | { ok: false; error: string; retryAfter?: number; fatal: boolean };
+
+/**
+ * Ошибки, после которых повторять бессмысленно: чата нет, бота выгнали или
+ * заблокировали, писать запрещено. Такой чат снимаем с рассылки.
+ */
+const FATAL_ERRORS = [
+  "chat not found",
+  "bot was blocked",
+  "bot was kicked",
+  "user is deactivated",
+  "not enough rights",
+  "CHAT_WRITE_FORBIDDEN",
+  "need administrator rights",
+  "have no rights to send",
+];
+
+function isFatal(description: string): boolean {
+  const low = description.toLowerCase();
+  return FATAL_ERRORS.some((s) => low.includes(s.toLowerCase()));
+}
+
+async function request<T>(
+  method: string,
+  body: Record<string, unknown>,
+): Promise<ApiResult<T>> {
+  if (!botConfigured()) return { ok: false, error: "TELEGRAM_BOT_TOKEN не задан", fatal: true };
   try {
     const res = await fetch(API(method), {
       method: "POST",
@@ -37,43 +67,69 @@ async function call<T>(method: string, body: Record<string, unknown>): Promise<T
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(method === "getUpdates" ? 70_000 : 15_000),
     });
-    const json = (await res.json()) as { ok: boolean; result?: T; description?: string };
+    const json = (await res.json()) as {
+      ok: boolean;
+      result?: T;
+      description?: string;
+      parameters?: { retry_after?: number };
+    };
     if (!json.ok) {
+      const description = json.description ?? `HTTP ${res.status}`;
       // Conflict = тот же бот опрашивается второй копией (обычно dev-сервер в
       // песочнице против продакшена). Пишем один раз на серию, иначе логи
       // продакшена забиваются одинаковой строкой каждые пару секунд.
-      if (json.description?.includes("Conflict")) {
+      if (description.includes("Conflict")) {
         if (!conflictLogged) {
           conflictLogged = true;
           console.warn(
             "[telegram] тот же токен опрашивает другая копия бота — оставь запущенным только один экземпляр",
           );
         }
-        return null;
+        return { ok: false, error: description, fatal: false };
       }
-      console.error(`[telegram] ${method}: ${json.description}`);
-      return null;
+      console.error(`[telegram] ${method}: ${description}`);
+      return {
+        ok: false,
+        error: description,
+        retryAfter: json.parameters?.retry_after,
+        fatal: isFatal(description),
+      };
     }
     conflictLogged = false;
-    return json.result ?? null;
+    return { ok: true, result: json.result ?? null };
   } catch (error) {
-    if ((error as Error).name !== "TimeoutError") {
-      console.error(`[telegram] ${method} failed:`, (error as Error).message);
+    const err = error as Error;
+    const timeout = err.name === "TimeoutError";
+    // Таймаут долгого getUpdates — норма, остальное пишем в лог обязательно:
+    // раньше таймауты глотались молча, и потерянный сигнал не оставлял следа.
+    if (!(timeout && method === "getUpdates")) {
+      console.error(`[telegram] ${method} не прошёл: ${timeout ? "таймаут" : err.message}`);
     }
-    return null;
+    return { ok: false, error: timeout ? "таймаут запроса" : err.message, fatal: false };
   }
+}
+
+async function call<T>(method: string, body: Record<string, unknown>): Promise<T | null> {
+  const res = await request<T>(method, body);
+  return res.ok ? res.result : null;
 }
 
 type Keyboard = { inline_keyboard: { text: string; url: string }[][] };
 
-export async function sendMessage(chatId: string, text: string, keyboard?: Keyboard) {
-  return call<{ message_id: number }>("sendMessage", {
+/** Отправка с разбором ошибки — для доставки сигналов с повторами. */
+export async function sendMessageResult(chatId: string, text: string, keyboard?: Keyboard) {
+  return request<{ message_id: number }>("sendMessage", {
     chat_id: chatId,
     text,
     parse_mode: "HTML",
     disable_web_page_preview: true,
     ...(keyboard ? { reply_markup: keyboard } : {}),
   });
+}
+
+export async function sendMessage(chatId: string, text: string, keyboard?: Keyboard) {
+  const res = await sendMessageResult(chatId, text, keyboard);
+  return res.ok ? res.result : null;
 }
 
 export async function broadcast(text: string, keyboard?: Keyboard) {
@@ -136,6 +192,22 @@ function feedLine(): string {
   if (feed.clockSkewSec) parts.push(`часы брокера +${feed.clockSkewSec / 3600} ч`);
   if (feed.note) parts.push(feed.note);
   return parts.join(" · ");
+}
+
+/**
+ * Строка о доставке сигналов — для /status.
+ *
+ * Держим её на виду: молчащий бот при живом сканере — это почти всегда
+ * недоставка, и раньше это было видно только запросом в базу.
+ */
+async function deliveryLine(): Promise<string> {
+  const health = await deliveryHealth();
+  if (health.pending === 0 && health.failed === 0) return "Доставка в чаты: всё отправлено";
+  const parts: string[] = [];
+  if (health.pending) parts.push(`в очереди ${health.pending}`);
+  if (health.failed) parts.push(`не доставлено ${health.failed}`);
+  if (health.lastError) parts.push(`последняя ошибка: ${health.lastError}`);
+  return `Доставка в чаты: ${parts.join(" · ")}`;
 }
 
 function expiryLabel(seconds: number): string {
@@ -358,6 +430,7 @@ async function handleCommand(
             ? `Последний проход: ${fmtTime(run.startedAt)} · ${run.scanned} пар · ${run.signalsFound} сигналов · ${run.durationMs} мс${run.note ? ` · ${run.note}` : ""}`
             : "Последний проход: ещё не было",
           `Всего сигналов в базе: ${totalSignals}`,
+          await deliveryLine(),
           feedLine(),
         ].join("\n"),
       );
@@ -472,16 +545,6 @@ if (poll.running) {
   void pollLoop(poll.generation);
 }
 
-/** Рассылка сигнала и отметка в БД. */
-export async function publishSignal(signal: Signal) {
-  const settings = await getSettings();
-  if (!settings.telegramEnabled) return 0;
-  const sent = await broadcast(formatSignal(signal), pairKeyboard(signal.symbol));
-  if (sent > 0) {
-    await db
-      .update(schema.signals)
-      .set({ sentToTelegram: true })
-      .where(eq(schema.signals.id, signal.id));
-  }
-  return sent;
-}
+// Рассылка сигналов живёт в ./delivery: там на каждый чат своя строка в
+// `deliveries`, повторы и снятие мёртвых чатов с подписки. Здесь — только
+// транспорт (sendMessage/broadcast) и разбор команд.

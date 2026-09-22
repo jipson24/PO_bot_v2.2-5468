@@ -21,7 +21,7 @@ import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { db } from "./database";
 import * as schema from "./database/schema";
 import { envStr, setEnvOverride } from "./env";
-import { getSettings, updateSettings } from "./engine/store";
+import { deliveryHealth, getSettings, updateSettings } from "./engine/store";
 import { feedState, ssidLooksLikeCookie } from "./market/po-feed";
 import { kyivDay, kyivDayBounds, TZ } from "./lib/day";
 
@@ -173,6 +173,8 @@ async function health() {
       ssidFromDb: Boolean(settings.poSsid),
     },
     assets: assets.length,
+    // Доставка отдельно от сканера: сигнал может родиться и не уехать в чат.
+    delivery: await deliveryHealth(),
     today: { day: kyivDay(), signals: today.length, wins, losses, pending },
   };
 }

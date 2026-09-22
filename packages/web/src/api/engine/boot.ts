@@ -1,6 +1,7 @@
 import { addSubscriber, getSettings } from "./store";
 import { startScanner } from "./scanner";
 import { startFeedAlerts } from "./feed-alerts";
+import { startDeliveryRetry } from "./delivery";
 import { startOutcomeResolver } from "./outcomes";
 import { startDailyReporter } from "./daily-report";
 import { botConfigured, sendMessage, startPolling } from "./telegram";
@@ -47,6 +48,7 @@ export function boot() {
         console.warn("[boot] TELEGRAM_BOT_TOKEN не задан — рассылка выключена");
       }
 
+      startDeliveryRetry();
       startFeedAlerts();
       startOutcomeResolver();
       startDailyReporter();

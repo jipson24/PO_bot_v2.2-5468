@@ -14,7 +14,7 @@ import {
   parseBlockedHours,
   parseExcluded,
 } from "./store";
-import { publishSignal } from "./telegram";
+import { publishSignal } from "./delivery";
 
 export interface ScanOutcome {
   scanned: number;

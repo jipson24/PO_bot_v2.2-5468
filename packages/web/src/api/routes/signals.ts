@@ -7,7 +7,8 @@ import * as schema from "../database/schema";
 import { engineEnabled } from "../env";
 import { runScan, scannerRunning } from "../engine/scanner";
 import { getSettings } from "../engine/store";
-import { formatSignal, publishSignal } from "../engine/telegram";
+import { publishSignal } from "../engine/delivery";
+import { formatSignal } from "../engine/telegram";
 
 const listInput = z.object({
   limit: z.number().min(1).max(100).default(30),
