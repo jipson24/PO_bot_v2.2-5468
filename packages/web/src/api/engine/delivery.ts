@@ -22,7 +22,7 @@ import { and, asc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "../database";
 import * as schema from "../database/schema";
 import { activeSubscribers, deactivateSubscriber, getSettings } from "./store";
-import { formatSignal, pairKeyboard, sendMessageResult } from "./telegram";
+import { botConfigured, formatSignal, pairKeyboard, sendMessageResult } from "./telegram";
 
 type Signal = typeof schema.signals.$inferSelect;
 
@@ -110,6 +110,10 @@ async function syncSignalFlag(signalId: number) {
 export async function publishSignal(signal: Signal) {
   const settings = await getSettings();
   if (!settings.telegramEnabled) return 0;
+  if (!botConfigured()) {
+    console.warn("[доставка] TELEGRAM_BOT_TOKEN не задан — сигнал не поставлен в очередь доставки");
+    return 0;
+  }
 
   const subs = await activeSubscribers();
   if (subs.length === 0) {
@@ -150,6 +154,7 @@ export async function publishSignal(signal: Signal) {
 export async function retryPendingDeliveries(): Promise<number> {
   const settings = await getSettings();
   if (!settings.telegramEnabled) return 0;
+  if (!botConfigured()) return 0;
 
   const pending = await db
     .select()

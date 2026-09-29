@@ -59,7 +59,12 @@ async function request<T>(
   method: string,
   body: Record<string, unknown>,
 ): Promise<ApiResult<T>> {
-  if (!botConfigured()) return { ok: false, error: "TELEGRAM_BOT_TOKEN не задан", fatal: true };
+  // Не задан токен — проблема конфигурации процесса, а не конкретного чата.
+  // Раньше это помечалось fatal:true и delivery.ts на первом же сигнале снимал
+  // с рассылки вообще всех подписчиков (см. FATAL_ERRORS там же) — токен
+  // появится после настройки, чат тут ни при чём.
+  if (!botConfigured())
+    return { ok: false, error: "TELEGRAM_BOT_TOKEN не задан", fatal: false };
   try {
     const res = await fetch(API(method), {
       method: "POST",
