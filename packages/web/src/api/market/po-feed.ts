@@ -10,9 +10,10 @@
 
 import type { Candle } from "../strategy/indicators";
 import { envFlag, envStr, WS } from "../env";
+import { feedHost, rotateHost, wsUrl } from "./po-hosts";
 
-const WS_DEMO = "wss://demo-api-eu.po.market/socket.io/?EIO=4&transport=websocket";
-const WS_LIVE = "wss://api-eu.po.market/socket.io/?EIO=4&transport=websocket";
+export { feedHost };
+
 /**
  * UA обязан совпадать с тем, под который выписана сессия: он вшит внутрь строки
  * `session` (`s:10:"user_agent"`), и PO сверяет его при авторизации.
@@ -163,6 +164,7 @@ const WS_CONNECTING = 0;
 const WS_OPEN = 1;
 
 let socket: WebSocket | null = null;
+let lastAuthedHost = "";
 let state: FeedState = "idle";
 let stateNote = "";
 let lastPayloadAt = 0;
@@ -335,7 +337,16 @@ function connect(): Promise<void> {
   }
 
   setState("connecting");
-  const url = envFlag("POCKET_OPTION_DEMO", true) ? WS_DEMO : WS_LIVE;
+  const host = feedHost();
+  const url = wsUrl(host);
+  /** Дошла ли эта попытка до `successauth`; если нет — сервер меняем. */
+  let authed = false;
+  let rotated = false;
+  const failHost = (reason: string) => {
+    if (authed || rotated) return;
+    rotated = true;
+    rotateHost(reason, host);
+  };
   const ws = new WS(url, { headers: { Origin: "https://pocketoption.com", "User-Agent": UA } });
   ws.binaryType = "arraybuffer";
   socket = ws;
@@ -349,7 +360,12 @@ function connect(): Promise<void> {
 
   const handlePayload = (event: string, text: string) => {
     if (event === "successauth") {
+      authed = true;
       authedAt = Date.now();
+      if (lastAuthedHost !== host) {
+        console.log(`[po-feed] сессия принята: ${host}`);
+        lastAuthedHost = host;
+      }
       setState("live");
       reconnectDelayMs = RECONNECT_MIN_MS;
       return;
@@ -453,6 +469,7 @@ function connect(): Promise<void> {
         keepAlive ? "переподключение" : "соединение закрыто",
       );
     }
+    failHost("соединение закрыто до авторизации");
     settleAll(new Error("Pocket Option: соединение закрыто"));
     scheduleReconnect();
   });
@@ -462,6 +479,7 @@ function connect(): Promise<void> {
     if (state !== "unauthorized") {
       setState(keepAlive ? "connecting" : "error", keepAlive ? "переподключение" : "ошибка WebSocket");
     }
+    failHost("ошибка соединения");
     settleAll(new Error("Pocket Option: ошибка WebSocket"));
     scheduleReconnect();
   });
@@ -473,6 +491,17 @@ function connect(): Promise<void> {
       // Ждём именно `successauth`: до него котировки не отдаются.
       if ((open && state === "live") || Date.now() - started > CONNECT_TIMEOUT_MS) {
         clearInterval(check);
+        if (!authed) {
+          // Висящий TCP-коннект сам не отвалится ещё минуту — рвём и идём дальше.
+          failHost(`нет авторизации за ${CONNECT_TIMEOUT_MS / 1000} с`);
+          try {
+            const raw = ws as unknown as { terminate?: () => void };
+            if (raw.terminate) raw.terminate();
+            else ws.close();
+          } catch {
+            /* сокет мог уже закрыться */
+          }
+        }
         resolve();
       }
     }, 100);

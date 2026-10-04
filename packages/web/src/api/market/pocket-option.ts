@@ -12,9 +12,7 @@
  */
 
 import { envFlag, envStr, WS } from "../env";
-
-const WS_URL = "wss://demo-api-eu.po.market/socket.io/?EIO=4&transport=websocket";
-const LIVE_WS_URL = "wss://api-eu.po.market/socket.io/?EIO=4&transport=websocket";
+import { feedHost, rotateHost, wsHosts, wsUrl } from "./po-hosts";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36";
 
@@ -85,7 +83,7 @@ function parseAssets(payload: string): PoAsset[] {
 }
 
 /** Одноразовое подключение: забрать активы с payout. */
-export function fetchSnapshot(timeoutMs = 20_000): Promise<PoSnapshot> {
+export function fetchSnapshot(timeoutMs = 20_000, host = feedHost()): Promise<PoSnapshot> {
   return new Promise((resolve, reject) => {
     let auth: string;
     try {
@@ -95,8 +93,7 @@ export function fetchSnapshot(timeoutMs = 20_000): Promise<PoSnapshot> {
       return;
     }
 
-    const url = envFlag("POCKET_OPTION_DEMO", true) ? WS_URL : LIVE_WS_URL;
-    const ws = new WS(url, {
+    const ws = new WS(wsUrl(host), {
       headers: { Origin: "https://pocketoption.com", "User-Agent": UA },
     });
 
@@ -205,7 +202,7 @@ export async function getAssets(force = false): Promise<PoSnapshot> {
     return snapshotCache;
   }
   if (inflight) return inflight;
-  inflight = fetchSnapshot()
+  inflight = fetchSnapshotAnyHost()
     .then((snap) => {
       snapshotCache = snap;
       return snap;
@@ -214,6 +211,21 @@ export async function getAssets(force = false): Promise<PoSnapshot> {
       inflight = null;
     });
   return inflight;
+}
+
+/** Список активов с перебором серверов PO: недоступный сервер пропускаем. */
+async function fetchSnapshotAnyHost(): Promise<PoSnapshot> {
+  let lastError: unknown;
+  for (let i = 0; i < wsHosts().length; i++) {
+    const host = feedHost();
+    try {
+      return await fetchSnapshot(12_000, host);
+    } catch (error) {
+      lastError = error;
+      rotateHost(`активы: ${(error as Error).message}`, host);
+    }
+  }
+  throw lastError;
 }
 
 export function cachedSnapshot(): PoSnapshot | null {

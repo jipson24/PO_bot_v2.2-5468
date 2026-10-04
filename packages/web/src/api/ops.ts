@@ -22,7 +22,7 @@ import { db } from "./database";
 import * as schema from "./database/schema";
 import { envStr, setEnvOverride } from "./env";
 import { deliveryHealth, getSettings, updateSettings } from "./engine/store";
-import { feedState, ssidLooksLikeCookie } from "./market/po-feed";
+import { feedHost, feedState, ssidLooksLikeCookie } from "./market/po-feed";
 import { kyivDay, kyivDayBounds, TZ } from "./lib/day";
 
 const STARTED_AT = Date.now();
@@ -149,7 +149,7 @@ async function health() {
       tz: TZ,
       now: new Date().toISOString(),
     },
-    feed: { ...feedState(), ssidLooksLikeCookie: ssidLooksLikeCookie() },
+    feed: { ...feedState(), host: feedHost(), ssidLooksLikeCookie: ssidLooksLikeCookie() },
     scanner: {
       enabled: settings.scannerEnabled,
       intervalSec: settings.scanIntervalSec,
