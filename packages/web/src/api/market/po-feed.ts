@@ -18,7 +18,7 @@ export { feedHost };
  * UA обязан совпадать с тем, под который выписана сессия: он вшит внутрь строки
  * `session` (`s:10:"user_agent"`), и PO сверяет его при авторизации.
  */
-const UA = envStr(
+const userAgent = () => envStr(
   "POCKET_OPTION_UA",
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
 );
@@ -347,7 +347,7 @@ function connect(): Promise<void> {
     rotated = true;
     rotateHost(reason, host);
   };
-  const ws = new WS(url, { headers: { Origin: "https://pocketoption.com", "User-Agent": UA } });
+  const ws = new WS(url, { headers: { Origin: "https://pocketoption.com", "User-Agent": userAgent() } });
   ws.binaryType = "arraybuffer";
   socket = ws;
 
@@ -441,6 +441,7 @@ function connect(): Promise<void> {
   };
 
   ws.addEventListener("message", (event: MessageEvent) => {
+    if (socket !== ws) return;
     const data = event.data;
     if (typeof data === "string") {
       handleText(data);
@@ -462,6 +463,7 @@ function connect(): Promise<void> {
   });
 
   ws.addEventListener("close", () => {
+    if (socket !== ws) return;
     if (socket === ws) socket = null;
     if (state !== "unauthorized") {
       setState(
@@ -475,6 +477,7 @@ function connect(): Promise<void> {
   });
 
   ws.addEventListener("error", () => {
+    if (socket !== ws) return;
     if (socket === ws) socket = null;
     if (state !== "unauthorized") {
       setState(keepAlive ? "connecting" : "error", keepAlive ? "переподключение" : "ошибка WebSocket");
@@ -488,6 +491,11 @@ function connect(): Promise<void> {
     const started = Date.now();
     const check = setInterval(() => {
       const open = ws.readyState === WS_OPEN;
+      if (socket !== ws) {
+        clearInterval(check);
+        resolve();
+        return;
+      }
       // Ждём именно `successauth`: до него котировки не отдаются.
       if ((open && state === "live") || Date.now() - started > CONNECT_TIMEOUT_MS) {
         clearInterval(check);
@@ -599,6 +607,38 @@ export async function poCandles(asset: string, period = 300, bars = 300): Promis
   }
   historyCache.set(key, { at: Date.now(), candles });
   return candles;
+}
+
+/** Смена сессии: закрыть старый сокет/кэш и дождаться successauth нового. */
+export function reconnectFeed(timeoutMs = 35_000): Promise<boolean> {
+  const old = socket;
+  socket = null;
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  keepAlive = true;
+  reconnectDelayMs = RECONNECT_MIN_MS;
+  historyCache.clear();
+  listeners.clear();
+  askedPeriod.clear();
+  authedAt = 0;
+  lastPayloadAt = 0;
+  lastAuthedHost = "";
+  setState("idle");
+  try {
+    const raw = old as (WebSocket & { terminate?: () => void }) | null;
+    if (raw?.terminate) raw.terminate();
+    else raw?.close();
+  } catch { /* старый сокет уже закрыт */ }
+  return new Promise((resolve) => {
+    const unsubscribe = watchFeedState((change) => {
+      if (change.state !== "live") return;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(true);
+    });
+    const timer = setTimeout(() => { unsubscribe(); resolve(false); }, timeoutMs);
+    void connect().catch(() => scheduleReconnect());
+  });
 }
 
 /** Мягкая проверка фида: один запрос, без исключения. */

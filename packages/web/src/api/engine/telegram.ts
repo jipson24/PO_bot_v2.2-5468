@@ -1,8 +1,9 @@
 import { count, desc, eq, gte } from "drizzle-orm";
 import { db } from "../database";
 import * as schema from "../database/schema";
-import { envStr } from "../env";
-import { feedState } from "../market/po-feed";
+import { envFlag, envStr, setEnvOverride } from "../env";
+import { feedState, reconnectFeed } from "../market/po-feed";
+import { handleSsidCommand, isSsidCommand, safeTelegramText } from "./ssid-command";
 
 import {
   activeSubscribers,
@@ -250,6 +251,7 @@ const HELP = [
   "/scan — прогнать сканер сейчас",
   "/pairs — пары в работе и payout",
   "/status — состояние сканера",
+  "/ssid &lt;строка&gt; — обновить сессию PO (только владелец, личный чат)",
   "/threshold 70 — порог уверенности (50–90)",
   "/stop — отключить рассылку",
   "/start — включить рассылку",
@@ -297,7 +299,22 @@ async function handleCommand(
   text: string,
   title?: string,
   chatType = "private",
+  senderId?: string,
+  messageId?: number,
 ) {
+  if (isSsidCommand(text)) {
+    await handleSsidCommand(chatId, chatType, senderId, text, {
+      expectedUid: envStr("POCKET_OPTION_UID"),
+      isDemo: envFlag("POCKET_OPTION_DEMO", true),
+      reply: (reply) => sendMessage(chatId, reply),
+      removeMessage: () => messageId == null ? Promise.resolve() :
+        call("deleteMessage", { chat_id: chatId, message_id: messageId }),
+      save: (ssid) => updateSettings({ poSsid: ssid }),
+      apply: (ssid) => setEnvOverride("POCKET_OPTION_SSID", ssid),
+      reconnect: () => reconnectFeed(),
+    });
+    return;
+  }
   const [rawCmd, ...args] = text.trim().split(/\s+/);
   const cmd = normalizeCommand(rawCmd ?? "");
 
@@ -465,6 +482,8 @@ async function handleCommand(
 interface TgUpdate {
   update_id: number;
   message?: {
+    message_id?: number;
+    from?: { id: number };
     chat: {
       id: number;
       type?: string;
@@ -515,11 +534,12 @@ async function pollLoop(generation: number) {
       if (!msg?.text) continue;
       const chatId = String(msg.chat.id);
       const title = msg.chat.title ?? msg.chat.username ?? msg.chat.first_name ?? undefined;
-      console.log(`[telegram] ← ${chatId} (${msg.chat.type ?? "?"}): ${msg.text}`);
+      console.log(`[telegram] ← ${chatId} (${msg.chat.type ?? "?"}): ${safeTelegramText(msg.text)}`);
       try {
-        await handleCommand(chatId, msg.text, title, msg.chat.type ?? "private");
+        await handleCommand(chatId, msg.text, title, msg.chat.type ?? "private",
+          msg.from ? String(msg.from.id) : undefined, msg.message_id);
       } catch (error) {
-        console.error("[telegram] handler:", (error as Error).message);
+        console.error("[telegram] handler:", isSsidCommand(msg.text) ? "ошибка команды /ssid (детали скрыты)" : (error as Error).message);
       }
     }
   }
