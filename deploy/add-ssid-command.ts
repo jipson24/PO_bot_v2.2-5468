@@ -17,10 +17,11 @@ function plain(source: string) {
 }
 const command = plain(await source("engine/ssid-command.ts"));
 const hosts = plain(await source("market/po-hosts.ts")).replace(/\bscope\b/g, "ssidHostScope");
+const session = plain(await source("market/po-session.ts"));
 const feed = await source("market/po-feed.ts");
 const connect = plain(feed.slice(feed.indexOf("function connect():"), feed.indexOf("/**\n * Свечи по паре")));
 const reconnect = plain(feed.slice(feed.indexOf("export function reconnectFeed("), feed.indexOf("/** Мягкая проверка фида")));
-once("function connect() {", hosts + '\nvar lastAuthedHost = "";\nfunction userAgent() { return envStr("POCKET_OPTION_UA", UA); }\nfunction connect() {');
+once("function connect() {", hosts + session + '\nvar lastAuthedHost = "";\nfunction connect() {');
 const start = bundle.indexOf("function connect() {");
 const end = bundle.indexOf("async function poCandles(", start);
 if (start < 0 || end < 0) throw new Error("Не найден connect/poCandles");
@@ -51,6 +52,7 @@ once('feed: { ...feedState(), ssidLooksLikeCookie: ssidLooksLikeCookie() },',
 // Перебор серверов и для отдельного соединения со списком активов.
 once('function fetchSnapshot(timeoutMs = 20000) {', 'function fetchSnapshot(timeoutMs = 20000, host = feedHost()) {');
 once('const url = envFlag("POCKET_OPTION_DEMO", true) ? WS_URL : LIVE_WS_URL;', 'const url = wsUrl(host);');
+once('"User-Agent": UA2', '"User-Agent": pocketUserAgent()');
 once('inflight = fetchSnapshot().then(', 'inflight = fetchSnapshotAnyHost().then(');
 const assets = await source("market/pocket-option.ts");
 const helper = plain(assets.slice(assets.indexOf("async function fetchSnapshotAnyHost"), assets.indexOf("export function cachedSnapshot")));

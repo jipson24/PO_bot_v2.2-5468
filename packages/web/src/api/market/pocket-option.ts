@@ -13,8 +13,7 @@
 
 import { envFlag, envStr, WS } from "../env";
 import { feedHost, rotateHost, wsHosts, wsUrl } from "./po-hosts";
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36";
+import { pocketUserAgent } from "./po-session";
 
 export interface PoAsset {
   id: number;
@@ -94,7 +93,7 @@ export function fetchSnapshot(timeoutMs = 20_000, host = feedHost()): Promise<Po
     }
 
     const ws = new WS(wsUrl(host), {
-      headers: { Origin: "https://pocketoption.com", "User-Agent": UA },
+      headers: { Origin: "https://pocketoption.com", "User-Agent": pocketUserAgent() },
     });
 
     let pendingEvent: string | null = null;

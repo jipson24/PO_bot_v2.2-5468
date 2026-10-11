@@ -11,17 +11,9 @@
 import type { Candle } from "../strategy/indicators";
 import { envFlag, envStr, WS } from "../env";
 import { feedHost, rotateHost, wsUrl } from "./po-hosts";
+import { pocketUserAgent } from "./po-session";
 
 export { feedHost };
-
-/**
- * UA обязан совпадать с тем, под который выписана сессия: он вшит внутрь строки
- * `session` (`s:10:"user_agent"`), и PO сверяет его при авторизации.
- */
-const userAgent = () => envStr(
-  "POCKET_OPTION_UA",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
-);
 
 /** События с живыми тиками — по ним замеряем сдвиг часов брокера. */
 const STREAM_EVENTS = new Set(["updateStream"]);
@@ -347,7 +339,7 @@ function connect(): Promise<void> {
     rotated = true;
     rotateHost(reason, host);
   };
-  const ws = new WS(url, { headers: { Origin: "https://pocketoption.com", "User-Agent": userAgent() } });
+  const ws = new WS(url, { headers: { Origin: "https://pocketoption.com", "User-Agent": pocketUserAgent() } });
   ws.binaryType = "arraybuffer";
   socket = ws;
 
