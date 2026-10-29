@@ -24,6 +24,7 @@ import { envStr, setEnvOverride } from "./env";
 import { deliveryHealth, getSettings, updateSettings } from "./engine/store";
 import { feedHost, feedState, ssidLooksLikeCookie } from "./market/po-feed";
 import { kyivDay, kyivDayBounds, TZ } from "./lib/day";
+import { readNewsShadowStatus } from "./news/engine";
 
 const STARTED_AT = Date.now();
 
@@ -229,6 +230,7 @@ export function registerOps(app: Hono) {
   });
 
   app.get("/api/ops/health", async (c) => c.json(await health()));
+  app.get("/api/ops/news", async (c) => c.json(await readNewsShadowStatus()));
 
   app.get("/api/ops/archive", async (c) => {
     const day = c.req.query("day") ?? null;

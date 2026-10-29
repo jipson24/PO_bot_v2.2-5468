@@ -35,6 +35,7 @@ Mobile: `Colors.light`/`Colors.dark` в `packages/mobile/constants/theme.ts` (о
 - **Mobile — Настройки** (`packages/mobile/app/(tabs)/settings.tsx`) — порог уверенности, интервал сканирования, вкл/выкл рассылки, Telegram-статус.
 - **Mobile — Детали сигнала** (`packages/mobile/app/signal/[id].tsx`) — полный разбор сетапа по таймфреймам.
 - **Web — Дашборд** (`packages/web/src/web/pages/index.tsx`) — тот же контент в виде терминала.
+- **Web — Новости** — read-only теневой журнал: реальные инструменты, события до/после публикаций, пробелы покрытия, доступность источников. Визуально те же Panel/Stat/Chip; жёлтая метка «Теневой режим», live-множитель всегда 1.00.
 
 ## Flows
 

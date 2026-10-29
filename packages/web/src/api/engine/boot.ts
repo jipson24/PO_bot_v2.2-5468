@@ -6,6 +6,7 @@ import { startOutcomeResolver } from "./outcomes";
 import { startDailyReporter } from "./daily-report";
 import { botConfigured, sendMessage, startPolling } from "./telegram";
 import { engineEnabled, envStr, setEnvOverride } from "../env";
+import { startNewsShadow } from "../news/engine";
 
 const FLAG = "__pocketSignalBotBooted";
 const globalScope = globalThis as unknown as Record<string, boolean | undefined>;
@@ -52,6 +53,7 @@ export function boot() {
       startFeedAlerts();
       startOutcomeResolver();
       startDailyReporter();
+      startNewsShadow();
       startScanner(settings.scanIntervalSec);
     } catch (error) {
       globalScope[FLAG] = false;

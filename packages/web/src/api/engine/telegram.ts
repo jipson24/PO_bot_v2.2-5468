@@ -4,6 +4,7 @@ import * as schema from "../database/schema";
 import { envFlag, envStr, setEnvOverride } from "../env";
 import { feedState, reconnectFeed } from "../market/po-feed";
 import { handleSsidCommand, isSsidCommand, safeTelegramText } from "./ssid-command";
+import { newsTelegramStatus } from "../news/engine";
 
 import {
   activeSubscribers,
@@ -251,6 +252,7 @@ const HELP = [
   "/scan — прогнать сканер сейчас",
   "/pairs — пары в работе и payout",
   "/status — состояние сканера",
+  "/news — новостной риск и покрытие (теневой режим)",
   "/ssid &lt;строка&gt; — обновить сессию PO (только владелец, личный чат)",
   "/threshold 70 — порог уверенности (50–90)",
   "/stop — отключить рассылку",
@@ -302,6 +304,11 @@ async function handleCommand(
   senderId?: string,
   messageId?: number,
 ) {
+  if (/^\/news(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text.trim())) {
+    try { await sendMessage(chatId, await newsTelegramStatus()); }
+    catch { await sendMessage(chatId, "Новостной журнал недоступен. Это не означает отсутствие риска; реальные веса не меняются."); }
+    return;
+  }
   if (isSsidCommand(text)) {
     await handleSsidCommand(chatId, chatType, senderId, text, {
       expectedUid: envStr("POCKET_OPTION_UID"),

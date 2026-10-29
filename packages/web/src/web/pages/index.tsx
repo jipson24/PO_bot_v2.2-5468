@@ -10,6 +10,7 @@ import {
   Signal as SignalIcon,
   BarChart3,
   Users,
+  Newspaper,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "../components/ui/button";
@@ -19,10 +20,11 @@ import { PairsTable } from "../components/pairs-table";
 import { ScanLog } from "../components/scan-log";
 import { SettingsPanel } from "../components/settings-panel";
 import { StatsPanel } from "../components/stats-panel";
+import { NewsPanel } from "../components/news-panel";
 import { agoLabel, expiryLabel } from "../lib/format";
 import { useOverview, useResendSignal, useScanNow, useSignals } from "../queries/signals";
 
-type Tab = "signals" | "pairs" | "settings" | "statistics";
+type Tab = "signals" | "pairs" | "settings" | "statistics" | "news";
 type Filter = "all" | "call" | "put";
 
 const TABS: { id: Tab; label: string; icon: typeof SignalIcon }[] = [
@@ -30,6 +32,7 @@ const TABS: { id: Tab; label: string; icon: typeof SignalIcon }[] = [
   { id: "pairs", label: "Пары", icon: Activity },
   { id: "settings", label: "Настройки", icon: Settings2 },
   { id: "statistics", label: "Статистика", icon: BarChart3 },
+  { id: "news", label: "Новости", icon: Newspaper },
 ];
 
 function Index() {
@@ -86,14 +89,14 @@ function Index() {
           </div>
         </div>
 
-        <nav className="mx-auto flex max-w-6xl gap-1 px-4">
+        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4">
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
               className={cn(
-                "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-[12px] font-medium transition-colors",
+                "-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-[12px] font-medium transition-colors",
                 tab === t.id
                   ? "border-call text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
@@ -261,6 +264,7 @@ function Index() {
         )}
 
         {tab === "statistics" && <StatsPanel />}
+        {tab === "news" && <NewsPanel />}
       </main>
     </div>
   );

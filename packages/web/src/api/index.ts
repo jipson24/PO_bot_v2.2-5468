@@ -7,6 +7,7 @@ import { pairs } from "./routes/pairs";
 import { ping } from "./routes/ping";
 import { signals } from "./routes/signals";
 import { stats } from "./routes/stats";
+import { news } from "./routes/news";
 
 // API features are oRPC procedures, one file per feature in ./routes/,
 // composed into this router — typed end-to-end via the clients
@@ -20,6 +21,7 @@ export const router = {
   pairs,
   config,
   stats,
+  news,
 };
 
 export type AppRouter = typeof router;
