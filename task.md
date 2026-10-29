@@ -32,8 +32,8 @@
 - [x] Reactions: 562 complete / 1756 missing-bars; association only, no performance claim
 - [x] Browser check: news tab, 77 table rows, no JavaScript errors
 - [x] Final mobile check: 390px viewport, no page horizontal overflow; dev preview restarted in tmux
-- [ ] Git commit and push
-- [ ] Deliver technical status and visibility
+- [x] Git commit and push: bea6561 on origin/main
+- [x] Delivered running website preview and technical report
 
 ## Remaining caveats
 - No reliable actual-vs-forecast values, no structured earnings/SEC coverage.
